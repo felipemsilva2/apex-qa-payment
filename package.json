@@ -1,0 +1,11 @@
+{
+  "name": "apex-qa-payment",
+  "private": true,
+  "scripts": {
+    "test": "vitest run"
+  },
+  "devDependencies": {
+    "vitest": "^3.2.4",
+    "typescript": "^5.6.3"
+  }
+}

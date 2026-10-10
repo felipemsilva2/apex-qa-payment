@@ -2,7 +2,8 @@
   "name": "apex-qa-payment",
   "private": true,
   "scripts": {
-    "test": "vitest run"
+    "test": "vitest run",
+    "test:billing-lifecycle": "node --test tests/billing-lifecycle.node.cjs"
   },
   "devDependencies": {
     "vitest": "^3.2.4",

@@ -3,7 +3,8 @@
   "private": true,
   "scripts": {
     "test": "vitest run",
-    "test:billing-lifecycle": "node --test tests/billing-lifecycle.node.cjs"
+    "test:billing-lifecycle": "node --test tests/billing-lifecycle.node.cjs",
+    "test:payment-access": "node --test tests/payment-access-flow.node.cjs"
   },
   "devDependencies": {
     "vitest": "^3.2.4",

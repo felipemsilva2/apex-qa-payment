@@ -1,4 +1,5 @@
--- Run only in an authorized development database with the billing migrations applied.
+-- Run only in an explicitly authorized database with the billing migrations applied.
+-- Synthetic rows remain inside this transaction and are rolled back.
 BEGIN;
 DO $test$
 DECLARE
@@ -15,9 +16,17 @@ BEGIN
     VALUES(plan_uuid,'Synthetic billing regression',249.99,2999.88,'gym');
   INSERT INTO public.subscriptions(id,tenant_id,plan_id,asaas_id,status,billing_type,current_period_end)
     VALUES(sub_uuid,tenant_uuid,plan_uuid,'pau_synthetic','pending','ANUAL_PIX_AUTOMATIC',now());
+  UPDATE public.tenants SET subscription_test_blocked=true,trial_end=now()-interval '1 day' WHERE id=tenant_uuid;
   result := public.apply_asaas_subscription_payment(sub_uuid,'pay_synthetic_first',249.99,1,now());
   IF result->>'applied' <> 'true' THEN RAISE EXCEPTION 'First paid cycle was not applied'; END IF;
+  IF NOT EXISTS(SELECT 1 FROM public.tenants WHERE id=tenant_uuid AND status='active'
+    AND subscription_status='active' AND subscription_test_blocked=false AND trial_end IS NULL) THEN
+    RAISE EXCEPTION 'Paid confirmation did not clear all tenant access locks';
+  END IF;
   SELECT current_period_end INTO first_end FROM public.subscriptions WHERE id=sub_uuid;
+  IF first_end <= now() OR (SELECT status FROM public.subscriptions WHERE id=sub_uuid) <> 'active' THEN
+    RAISE EXCEPTION 'Paid confirmation did not restore a current subscription';
+  END IF;
   result := public.apply_asaas_subscription_payment(sub_uuid,'pay_synthetic_first',249.99,1,now());
   SELECT current_period_end INTO second_end FROM public.subscriptions WHERE id=sub_uuid;
   IF result->>'applied' <> 'false' OR first_end <> second_end THEN RAISE EXCEPTION 'Duplicate payment extended access'; END IF;

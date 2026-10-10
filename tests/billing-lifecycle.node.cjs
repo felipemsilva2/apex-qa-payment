@@ -33,26 +33,34 @@ function fixture() {
     billing_plans: [{id:'synthetic-plan',price_monthly:249.99,price_yearly:2999.88}],
     tenants: [{id:'synthetic-tenant',status:'suspended',subscription_status:'blocked'}],
     asaas_customers: [{tenant_id:'synthetic-tenant',asaas_id:'cus_synthetic'}],
-    tenant_purchases: [], notifications: [], profiles: [{id:'synthetic-user',tenant_id:'synthetic-tenant',role:'coach'}], asaas_pix_billing_cycles: [],
+    asaas_webhook_events: [], asaas_payment_effects: [], tenant_purchases: [], notifications: [], profiles: [{id:'synthetic-user',tenant_id:'synthetic-tenant',role:'coach'}], asaas_pix_billing_cycles: [],
   };
-  const grants = new Set();
+  const grants = new Set(); let rowSequence = 0;
   const db = {
+    auth: {getUser: async () => ({data:{user:{id:'synthetic-user'}},error:null})},
     from(table) {
+      tables[table] ||= [];
       let predicates=[], patch, inserted;
       const query = {
         select() {return query;}, order(){return query;}, limit(){return query;},
         eq(k,v){predicates.push(row=>row[k]===v);return query;}, neq(k,v){predicates.push(row=>row[k]!==v);return query;},
+        not(k,op,v){predicates.push(row=>op==='is'?row[k]!==v:true);return query;},
         in(k,vs){predicates.push(row=>vs.includes(row[k]));return query;},
         like(k,v){predicates.push(row=>String(row[k]||'').startsWith(v.slice(0,-1)));return query;},
         or(filter){predicates.push(row=>filter.split(',').some(clause=>{const [k,v]=clause.split('.eq.');return row[k]===v;}));return query;},
         update(value){patch=value;return query;}, insert(value){inserted=Array.isArray(value)?value:[value];return query;},
         execute(single=false){
+          let affectedRows;
           if(inserted){
+            const unique = table==='asaas_webhook_events'?'provider_event_id':table==='asaas_payment_effects'?'payment_id':null;
+            if(unique && tables[table].some(row=>row[unique]===inserted[0][unique])) return {data:null,error:{code:'23505'}};
             if(table==='asaas_pix_billing_cycles' && tables[table].some(row=>row.subscription_id===inserted[0].subscription_id&&row.cycle_date===inserted[0].cycle_date)) return {data:null,error:{code:'23505'}};
             if(table==='notifications' && inserted.some(row=>Object.keys(row).some(k=>!['user_id','tenant_id','type','content','data'].includes(k)))) return {data:null,error:{code:'PGRST204'}};
+            inserted.forEach(row=>{if(!row.id)row.id='synthetic-row-'+(++rowSequence);});
+            affectedRows=inserted;
             tables[table].push(...inserted);inserted=null;
           }
-          const rows=tables[table].filter(row=>predicates.every(predicate=>predicate(row)));
+          const rows=(affectedRows || tables[table]).filter(row=>predicates.every(predicate=>predicate(row)));
           if(patch) rows.forEach(row=>Object.assign(row,patch));
           return {data:single?(rows[0]?{...rows[0]}:null):rows.map(row=>({...row})),error:null};
         },
@@ -176,3 +184,5 @@ test('an ambiguous provider failure is not retried as a second charge',async()=>
   const retry=await f.context.ensureManualPixCycle(f.db,sub,request);
   assert.equal(posts,1);assert.equal(retry.reason,'cycle_already_claimed');assert.equal(f.tables.asaas_pix_billing_cycles[0].status,'unknown');
 });
+
+module.exports = {fixture, functions, managerHandler, paid, ts, sourceRoot, FixedDate};
